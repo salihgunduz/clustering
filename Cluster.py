@@ -106,7 +106,7 @@ def main(args):
         k = permuted_parameter_list[i][1]
         #Co_assoc = np.zeros((len(data),len(data)))
         km = KMeans(n_clusters=k, init='random',n_init=10, max_iter=300)
-        sl = AgglomerativeClustering(n_clusters=k, linkage='single')
+        sl = AgglomerativeClustering(n_clusters=k, linkage='average')
         #counter = np.zeros((len(data),len(data)))
         Alg_i = permuted_parameter_list[i][0]
 
@@ -120,7 +120,15 @@ def main(args):
         dist_mat = pd.DataFrame(dist_mat)
         dist_mat = 1 - dist_mat  
         # TODO : distance threshold? It must be life time criteria
-        single = AgglomerativeClustering(n_clusters=None,distance_threshold=3.5, linkage='single')
+        Z1 = linkage(Co_assoc, 'single')
+        lt = pd.DataFrame(Z1)
+        lt = lt.iloc[:,2:3]
+        lt['dif']=lt.shift(periods=1, fill_value=0)
+        diff = np.array(lt.iloc[:, 0]) - np.array(lt['dif']).reshape(len(lt['dif']), 1)
+        id = np.argmax(diff)
+        threshold_sl = np.mean(lt.iloc[id])
+        single = AgglomerativeClustering(n_clusters=None, linkage='single', 
+                                         distance_threshold=threshold_sl, )
         single.fit_predict(dist_mat)
         
         sl_labels = single.labels_
@@ -128,17 +136,28 @@ def main(args):
         unique_sl_labels = np.unique(sl_labels)
         sl_labels['idx'] = sl_labels.index
         unique_sl_labels = pd.DataFrame(unique_sl_labels)
-        num_cs = len(unique_sl_labels)
+        # number of cluster in SL(P_A)
+        num_cs = len(unique_sl_labels) 
         # tensor: number of cluster * n * n
         sl_mats = np.zeros((num_cs, len(data), len(data))) 
         
-        average = AgglomerativeClustering(n_clusters=None,distance_threshold=3.5,linkage='average')
+        Z2 = linkage(Co_assoc, 'average')
+        lt1 = pd.DataFrame(Z2)
+        lt1 = lt1.iloc[:,2:3]
+        lt1['dif']=lt1.shift(periods=1, fill_value=0)
+        diff = np.array(lt1.iloc[:,0:1])-np.array(lt1['dif']).reshape(len(lt1['dif']),1)
+        id = np.argmax(diff)
+        threshold_al = np.mean(lt1.iloc[id])
+        average = AgglomerativeClustering(n_clusters=None, linkage='average',
+                                          distance_threshold=threshold_al,)
+
         average.fit_predict(dist_mat)
         av_labels = average.labels_
         av_labels = pd.DataFrame(av_labels)
         unique_av_labels = np.unique(av_labels)
         av_labels['idx'] = av_labels.index
         unique_av_labels = pd.DataFrame(unique_av_labels)
+        # number of cluster in AL (P_B)
         num_ca = len(unique_av_labels)
         # tensor: number of cluster * n * n
         av_mats = np.zeros((num_ca, len(data), len(data)))
@@ -164,7 +183,7 @@ def main(args):
             cluster_temp = cluster_temp[cluster_temp!=0]
             cluster_stab = np.mean(cluster_temp)
             
-            if cluster_stab < 0.95:  # threshold clusters. 
+            if cluster_stab < 0.9:  # threshold clusters. 
                 
                 cluster_list.append(i)
                 
@@ -172,18 +191,29 @@ def main(args):
         cluster_list.reverse() 
         for i in cluster_list:
             cluster_mats = list(cluster_mats)
-            if len(cluster_mats) > 1:
-                cluster_mats.pop(i)
-        cluster_mats = np.array(cluster_mats)  
-        C = np.max(cluster_mats, axis=0) # this max is used for combining output matricies of one algorithm.
-        Cs.append(C)
+            cluster_mats.pop(i)
+        if(len(cluster_mats)>0):
+            cluster_mats = np.array(cluster_mats)  
+            C = np.mean(cluster_mats, axis=0) # this max is used for combining output matricies of one algorithm.
+            Cs.append(C)   
+
 
     aa = np.array(Cs) 
     cm = np.max(aa, axis=0)  # and the second max is used for combining the C^i for creating C_M
     import seaborn as sns; 
-    cm = 1-cm
-    average = AgglomerativeClustering(n_clusters=3,linkage='single')
-    average.fit_predict(cm)
+    cm1 = 1-cm
+
+    Z3 = linkage(cm1, 'average')
+    lt2 = pd.DataFrame(Z3)
+    lt2 = lt2.iloc[:,2:3]
+    lt2['dif']=lt2.shift(periods=1, fill_value=0)
+    diff = np.array(lt2.iloc[:,0:1])-np.array(lt2['dif']).reshape(len(lt2['dif']),1)
+    id = np.argmax(diff)
+    threshold_al = np.mean(lt2.iloc[id])
+    average = AgglomerativeClustering(n_clusters=None, linkage='average',
+                                      distance_threshold=threshold_al)
+    average.fit_predict(cm1)
+
     cm_labels = average.labels_
     ax = sns.heatmap(cm)
 
@@ -222,12 +252,16 @@ size=90
 n = int(len(data_iris) * size/100)
 # m is experiment number.
 m=100
-
+data_len = int(len(data_iris))
 
 # set alogrithms and parameters
 parameter_list=[3, 5, 10, 12, 15]
+<<<<<<< HEAD
 #algorithm_list = ['knn','sl']
 algorithm_list = ['knn']
+=======
+algorithm_list = ['knn', 'sl']
+>>>>>>> 87cf72dd8a61f1eaf691ee92c6582416369e08e7
 # I permute parameters and algorithm types as a list then loop them for MultiEAC
 permute_parameter_list = list(itertools.product(algorithm_list, parameter_list))
 
@@ -242,8 +276,8 @@ for i in range(len(permute_parameter_list)):#algorithms
     k = permute_parameter_list[i][1]
     Co_assoc = np.zeros((len(data_iris),len(data_iris)))
     km = KMeans(n_clusters=k, init='random',n_init=10, max_iter=300,random_state=42)
-    sl = AgglomerativeClustering(n_clusters=k, linkage='single')
-    counter = np.zeros((149,149))
+    sl = AgglomerativeClustering(n_clusters=k, linkage='average')
+    counter = np.zeros((data_len,data_len))
     Alg_i = permute_parameter_list[i][0]
 
     if(Alg_i == 'knn'):
@@ -291,7 +325,14 @@ for i in range(len(permute_parameter_list)):#algorithms
     dist_mat = pd.DataFrame(dist_mat)
     dist_mat = 1 - dist_mat  
     # TODO : distance threshold? It must be life time criteria
-    single = AgglomerativeClustering(n_clusters=None,distance_threshold=3.5, linkage='single')
+    Z1 = linkage(Co_assoc, 'single')
+    lt = pd.DataFrame(Z1)
+    lt = lt.iloc[:,2:3]
+    lt['dif']=lt.shift(periods=1, fill_value=0)
+    diff = np.array(lt.iloc[:,0:1])-np.array(lt['dif']).reshape(len(lt['dif']),1)
+    id = np.argmax(diff)
+    threshold_sl = np.mean(lt.iloc[id])
+    single = AgglomerativeClustering(n_clusters=None,distance_threshold=threshold_sl, linkage='single')
     single.fit_predict(dist_mat)
     
     sl_labels = single.labels_
@@ -299,18 +340,24 @@ for i in range(len(permute_parameter_list)):#algorithms
     unique_sl_labels = np.unique(sl_labels)
     sl_labels['idx'] = sl_labels.index
     unique_sl_labels = pd.DataFrame(unique_sl_labels)
-    num_cs = len(unique_sl_labels)
+    num_cs = len(unique_sl_labels) # number of cluster in SL(P_A)
     sl_mats = np.zeros((num_cs,len(data_iris),len(data_iris))) # tensor: number of cluster * n * n
     
-    
-    average = AgglomerativeClustering(n_clusters=None,distance_threshold=3.5,linkage='average')
+    Z2 = linkage(Co_assoc, 'average')
+    lt1 = pd.DataFrame(Z2)
+    lt1 = lt1.iloc[:,2:3]
+    lt1['dif']=lt1.shift(periods=1, fill_value=0)
+    diff = np.array(lt1.iloc[:,0:1])-np.array(lt1['dif']).reshape(len(lt1['dif']),1)
+    id = np.argmax(diff)
+    threshold_al = np.mean(lt1.iloc[id])
+    average = AgglomerativeClustering(n_clusters=None,distance_threshold=threshold_al,linkage='average')
     average.fit_predict(dist_mat)
     av_labels = average.labels_
     av_labels = pd.DataFrame(av_labels)
     unique_av_labels = np.unique(av_labels)
     av_labels['idx'] = av_labels.index
     unique_av_labels = pd.DataFrame(unique_av_labels)
-    num_ca = len(unique_av_labels)
+    num_ca = len(unique_av_labels) # number of cluster in AL (P_B)
     av_mats = np.zeros((num_ca,len(data_iris),len(data_iris)))# tensor: number of cluster * n * n
     
     
@@ -337,7 +384,7 @@ for i in range(len(permute_parameter_list)):#algorithms
         cluster_temp = cluster_temp[cluster_temp!=0]
         cluster_stab = np.mean(cluster_temp)
         
-        if cluster_stab < 0.95:  # threshold clusters. 
+        if cluster_stab < 0.9:  # threshold clusters. 
             
             cluster_list.append(i)
             
@@ -345,23 +392,13 @@ for i in range(len(permute_parameter_list)):#algorithms
     cluster_list.reverse() 
     for i in    cluster_list:
         cluster_mats = list(cluster_mats)
+<<<<<<< HEAD
         if len(cluster_mats) > 1:
             cluster_mats.pop(i)
     cluster_mats = np.array(cluster_mats)  
     C = np.max(cluster_mats, axis=0) # this max is used for combining output matricies of one algorithm.
     Cs.append(C)
-"""   
-aa = np.array(Cs) 
-cm = np.max(aa, axis=0)  # and the second max is used for combining the C^i for creating C_M
-import seaborn as sns; 
-cm = 1-cm
-average = AgglomerativeClustering(n_clusters=3,linkage='single')
-average.fit_predict(cm)
-cm_labels = average.labels_
-ax = sns.heatmap(cm)
-
-plt.show()
-
+""" 
 '''
 Z1 = linkage(Co_assoc, 'single')
 SL_labels = Z1.labels_
@@ -374,5 +411,4 @@ L1 = leaves_list(Z1)
 L2 = leaves_list(Z2)
 '''
 
-#test
   
