@@ -40,9 +40,13 @@ def get_dataset(name, eps=1e-6):
         data[data.columns[-1]] = le.fit_transform(data[data.columns[-1]])
         data = pd.DataFrame(data)
     elif name == "breast-cancer":
-        data = pd.read_csv('data/breast-cancer-wisconsin.data', header=None, index_col=0)
+        data = pd.read_csv('data/breast-cancer-wisconsin.data', header=None)
+        print(data.shape)
+        data = data.replace(r'?', np.nan)
+        data = data.dropna()
+        data = pd.DataFrame(np.array(data))
     elif name == "optdigits":
-        data = pd.read_csv('data/optdigits.tra', header=None, index_col=0)
+        data = pd.read_csv('data/optdigits.tra', header=None)
         data = data[:100]
     elif name == "log_yeast":
         data = pd.read_csv('data/yeast.data', header=None, index_col=0, 

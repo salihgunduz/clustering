@@ -21,7 +21,7 @@ import random
 import argparse
 from utils import *
 from sklearn.cluster import KMeans
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, SpectralClustering
 from sklearn.metrics import accuracy_score
 from sklearn.utils.random import sample_without_replacement
 from scipy.cluster.hierarchy import dendrogram, linkage,leaves_list
@@ -45,16 +45,28 @@ def run_kmeans(km, data, pc, m, n):
         km_temp = np.array(km_temp)
         km_temp = km_temp.reshape(1, n)
         km_temp = np.repeat(km_temp, n, axis=0)
-        temp_co = ((km_temp-km_temp.T)==0)  # To control if the elements seen in same cluster.
+        temp_co = ((km_temp - km_temp.T) == 0)  # To control if the elements seen in same cluster.
 
-        for i_counter in range(len(temp_co)):
-            for j_counter in range(len(temp_co)):
-                counter[idx[i_counter],idx[j_counter]] += 1  # counter keeps the number of pairs seen in the same conter
+        import time
+        #t = time.time()
+        #for i_counter in range(len(temp_co)):
+        #    for j_counter in range(len(temp_co)):
+        #        counter[idx[i_counter],idx[j_counter]] += 1  # counter keeps the number of pairs seen in the same conter
+        #print(time.time() - t, "Time bad")
 
-        for tempx in range(len(temp_co)):
-            for tempy in range(len(temp_co)):
-                 co_assoc[idx[tempx],idx[tempy]] += temp_co[tempx,tempy]
+        idx = np.array(idx)
+        x = [i for a in range(len(temp_co)) for i in range(len(temp_co))]
+        y = [a for a in range(len(temp_co)) for i in range(len(temp_co))]
+        np.add.at(counter, [idx[x], idx[y]], 1)
 
+        #t = time.time()
+        #for tempx in range(len(temp_co)):
+        #    for tempy in range(len(temp_co)):
+        #         co_assoc[idx[tempx],idx[tempy]] += temp_co[tempx,tempy]
+        #print(time.time() - t, "Time Bad")
+        #t = time.time()
+        np.add.at(co_assoc, [idx[x], idx[y]], temp_co[x, y])
+        #print(time.time() - t, "Time Good")
     return co_assoc, counter
 
 def run_sl(sl, data, pc, m, n):
@@ -73,17 +85,49 @@ def run_sl(sl, data, pc, m, n):
         km_temp1 = np.array(km_temp)
         km_temp1 = km_temp1.reshape(1, n)
         km_temp1 = np.repeat(km_temp1, n, axis=0)
-        temp_co = ((km_temp1 - km_temp1.T)==0)
+        temp_co = ((km_temp1 - km_temp1.T) == 0)
 
-        counter 
-        for i_counter in range(len(temp_co)):
-            for j_counter in range(len(temp_co)):
-                counter[idx[i_counter],idx[j_counter]] += 1
+        #for i_counter in range(len(temp_co)):
+        #    for j_counter in range(len(temp_co)):
+        #        counter[idx[i_counter],idx[j_counter]] += 1
 
-        for tempx in range(len(temp_co)):
-            for tempy in range(len(temp_co)):
-                 co_assoc[idx[tempx],idx[tempy]] += temp_co[tempx,tempy]   
+        idx = np.array(idx)
+        x = [i for a in range(len(temp_co)) for i in range(len(temp_co))]
+        y = [a for a in range(len(temp_co)) for i in range(len(temp_co))]
+        np.add.at(counter, [idx[x], idx[y]], 1)
+
+        #for tempx in range(len(temp_co)):
+        #    for tempy in range(len(temp_co)):
+        #         co_assoc[idx[tempx],idx[tempy]] += temp_co[tempx,tempy]   
+        np.add.at(co_assoc, [idx[x], idx[y]], temp_co[x, y])
  
+    return co_assoc, counter
+
+def run_sc(sc, data, pc, m, n):
+
+    co_assoc = np.zeros((len(data), len(data)))
+    counter = np.zeros((len(data), len(data)))
+
+    for i in range(m):# m retries
+        data1 = sub_sampling(data, pc)  # shuffle and subsample %90
+        data1X = data1.iloc[:, :-1]     # exculde label
+        idx = data1X.index
+        km_temp = sc.fit_predict(data1X)    #k means predict        
+        km_temp = pd.DataFrame(km_temp)
+        km_temp['idx'] = idx
+        km_temp = km_temp.set_index('idx')
+        km_temp1 = np.array(km_temp)
+        km_temp1 = km_temp1.reshape(1, n)
+        km_temp1 = np.repeat(km_temp1, n, axis=0)
+        temp_co = ((km_temp1 - km_temp1.T) == 0)
+
+        idx = np.array(idx)
+        x = [i for a in range(len(temp_co)) for i in range(len(temp_co))]
+        y = [a for a in range(len(temp_co)) for i in range(len(temp_co))]
+        np.add.at(counter, [idx[x], idx[y]], 1)
+
+        np.add.at(co_assoc, [idx[x], idx[y]], temp_co[x, y])
+
     return co_assoc, counter
 
 def main(args):
@@ -91,12 +135,17 @@ def main(args):
 
     # set algorithms and parameters
     kmeans_sl_params_list = args.kmeans_sl_params
+    sc_params_k_list = args.sc_params_k
+    sc_param_sigma = args.sc_param_sigma
     algorithm_list = args.methods
     n = int(len(data) * args.pc)
     m = args.retries
 
-    permuted_parameter_list = list(itertools.product(algorithm_list,
+    permuted_parameter_list = list(itertools.product(algorithm_list[:2],
                                                      kmeans_sl_params_list))
+    if sc_params_k_list != []:
+        for k in sc_params_k_list:
+            permuted_parameter_list.append((algorithm_list[-1], k))
 
     Cs = []
     cooDict=[]
@@ -105,17 +154,20 @@ def main(args):
     for i in range(len(permuted_parameter_list)):
         k = permuted_parameter_list[i][1]
         #Co_assoc = np.zeros((len(data),len(data)))
-        km = KMeans(n_clusters=k, init='random',n_init=10, max_iter=300)
-        sl = AgglomerativeClustering(n_clusters=k, linkage='average')
         #counter = np.zeros((len(data),len(data)))
         Alg_i = permuted_parameter_list[i][0]
 
         if Alg_i == 'kmeans':
+            km = KMeans(n_clusters=k, init='random', n_init=10, max_iter=300)
             Co_assoc, counter = run_kmeans(km, data, args.pc, m, n)
         elif Alg_i == 'sl':
+            sl = AgglomerativeClustering(n_clusters=k, linkage='average')
             Co_assoc, counter = run_sl(sl, data, args.pc, m, n)
+        elif Alg_i == 'sc':
+            sc = SpectralClustering(n_clusters=k, gamma=1/(2*sc_param_sigma))
+            Co_assoc, counter = run_sc(sc, data, args.pc, m, n)
 
-        Co_assoc /=  counter  # We divide Co-Assoc to counter.          
+        Co_assoc /=  counter  # We divide Co-Assoc to counter.   
         dist_mat = Co_assoc.copy() 
         dist_mat = pd.DataFrame(dist_mat)
         dist_mat = 1 - dist_mat  
@@ -225,11 +277,17 @@ if __name__ == "__main__":
     parser.add_argument('dataset_name', metavar='D', type=str,
                         help="Enter the name of the dataset")
     parser.add_argument('--methods', metavar='M', type=str, nargs='+',
-                        default=['kmeans', 'sl'],
+                        default=['kmeans', 'sl', 'sc'],
                         help="Enter the methods to be tested")
     parser.add_argument('--kmeans_sl_params', metavar='KNNSL', type=int,
                         nargs='+', default=[3, 5, 10, 12, 15],
                         help="k-means and SL parameters (k)")
+    parser.add_argument('--sc_params_k', metavar='SC', type=int,
+                        nargs='+', default=[3, 12],
+                        help="Spectral Clustering parameter (k)")
+    parser.add_argument('--sc_param_sigma', metavar='SC', type=float,
+                        default=0.1,
+                        help="Spectral Clustering parameter (sigma)")
     parser.add_argument('--pc', metavar='P', type=float, default=0.9,
                         help="Subsample Percentage b/w 0 and 1")
     parser.add_argument('--retries', metavar='R', type=int, default=100,
